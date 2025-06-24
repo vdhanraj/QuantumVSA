@@ -23,7 +23,13 @@ This repository implements the method described in the following paper:  [https:
    ```
    (Default: `~/.llama/checkpoints/Llama3.1-8B-Instruct/`)
 
-3. **Install dependencies**
+   Model files can also be downloaded via huggingface-cli:
+   ```
+   huggingface-cli login
+   huggingface-cli download meta-llama/Llama-3.1-8B-Instruct
+   ```
+
+4. **Install dependencies**
    ```bash
    conda env create -f environment.yml
    ```
