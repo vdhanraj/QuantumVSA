@@ -26,7 +26,7 @@ This repository implements the method described in the following paper:  [https:
    Model files can also be downloaded via huggingface-cli:
    ```
    huggingface-cli login
-   huggingface-cli download meta-llama/Llama-3.1-8B-Instruct
+   huggingface-cli download meta-llama/Llama-3.2-1B-Instruct --include "original/*" --local-dir ~/.llama/checkpoints/Llama3.2-1B-Instruct
    ```
 
 4. **Install dependencies**
