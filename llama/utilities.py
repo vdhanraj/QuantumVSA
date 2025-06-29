@@ -10,6 +10,7 @@ import sys
 import math
 import argparse
 from pathlib import Path
+from tqdm import tqdm
 import datetime
 import wandb
 
@@ -716,11 +717,9 @@ def generate_and_save_data(generator, SE, save_dir, rounds, mode, save_frequency
 
     h_stacks = []
     numbers  = []
-
-    max_h_stack_tokens = 0
-
-    # Save data per round to avoid keeping it in memory
+    
     for r in range(rounds+1):
+        # Save data per round to avoid keeping it in memory
         if not r % save_frequency and r:
             if verbose:
                 print("On Round Number:", r)
@@ -780,7 +779,6 @@ def generate_and_save_data(generator, SE, save_dir, rounds, mode, save_frequency
         if tokens_to_keep == "all":
             # Dialog_data[0] is the dialogs 
             start_indices, end_indices = get_dialog_indices(generator, dialog_data[0], calculate_end_index=calculate_end_index)
-            max_h_stack_tokens = max(max_h_stack_tokens, max(start_indices)) # increase max_h_stack
             if calculate_end_index:
                 h_stacks += [h_stack[:,b:b+1,start_indices[b]:end_indices[b],:,].permute((1, 2, 3, 0)) 
                              for b in range(h_stack.shape[1])]
@@ -862,6 +860,120 @@ def generate_data_loaders(mode, save_dir, data_rounds, save_frequency, layer_num
         encoder_data_loaders.append(encoder_data_loader)
         
     return encoder_data_loaders
+
+def generate_data_without_saving(generator, rounds, mode, complexity,
+                                 n_samples, problem_type, layer_numbers,
+                                 df_subset=None, batch_size=512, tokens_to_keep=1,
+                                 calculate_end_index=False, gpu_seed=False, verbose=True):
+
+    if type(df_subset) == type(None):
+        use_existing_questions = False
+    else:
+        use_existing_questions = True
+
+    if mode == "train":
+        shuffle = True
+    elif mode == "val":
+        shuffle = False
+    elif mode == "test":
+        shuffle = False
+
+    h_stacks = []
+    numbers  = []
+
+    for r in tqdm(range(rounds), desc="Generating LLM Hidden States", unit="r"):
+        if use_existing_questions:
+            batch = df_subset.iloc[r * n_samples : (r + 1) * n_samples]
+            question, problem_type = batch["question"], batch["problem_type"]
+            x, y, solution         = batch["x"], batch["y"], batch["solution"]
+
+            # batch_dialog_data is a list of lists, with length equal to the length of df_dialogs. Each list contains 4 items. The first is 
+            #  the dialogs object, which is a list of Dialog objects, the length of which is equal to n_samples. The second is the x values, which is 
+            #  an array of integers, the third is the y values (also array of integers), and the final is the problem type, a string
+            dialog_data = [generate_dialog(complexity=complexity, samples=1,
+                                           problem_type=pt) for pt in problem_type]
+
+            for d in range(n_samples):
+                # First index is grabbing the batch item, second index is grabbing the dialog (instead of the x, y , pt),
+                #  third index is grabbing the batch item within dialogs (which is always of length 1 due to samples=1 above), and last
+                #  index is grabbing the last dialog sequence, since we only want to change that while leaving the example dialogs the same
+                dialog_data[d][0][0][-1]['content'] = question.values[d]
+                dialog_data[d][1][0], dialog_data[d][2][0] = x.values[d], y.values[d]
+
+
+            # dialog_data should be [dialog, x, y, pt], where each element is n_samples long. dialog_data previously was of length n_samples, where each
+            #  item in the sequence was [dialog, x, y, pt]. The below code puts it into the correct format
+            dialog_data = [[d[0][0] for d in dialog_data],
+                           np.array([d[1][0] for d in dialog_data]),
+                           np.array([d[2][0] for d in dialog_data]),
+                           problem_type.values]
+
+            correct_vsas = generator.model.SE.generate_VSA(torch.tensor(dialog_data[1]), torch.tensor(dialog_data[2]), dialog_data[3]).type(torch.bfloat16)
+
+            h_stack, _ = gather_h_stacks(generator, generator.model.SE, dialog_data, produce_correct_VSA=False)
+        else:
+            # Generate dialog data and gather 'h_stack' and 'correct_sps'
+            dialog_data = generate_dialog(complexity=complexity, samples=n_samples, problem_type=problem_type)
+
+            h_stack, correct_vsas = gather_h_stacks(generator, generator.model.SE, dialog_data, produce_correct_VSA=True)
+
+        # shape of h_stack is n_layers, batch, num_tokens, hiddem_dim.
+
+        if tokens_to_keep == "all":
+            # Dialog_data[0] is the dialogs 
+            start_indices, end_indices = get_dialog_indices(generator, dialog_data[0], calculate_end_index=calculate_end_index)
+            if calculate_end_index:
+                h_stacks += [h_stack[:,b:b+1,start_indices[b]:end_indices[b],:,].permute((1, 2, 3, 0)) 
+                             for b in range(h_stack.shape[1])]
+            else:
+                h_stacks += [h_stack[:,b:b+1,start_indices[b]:,:,].permute((1, 2, 3, 0)) 
+                             for b in range(h_stack.shape[1])]
+        else:
+            h_stacks += [h_stack[:,:,-tokens_to_keep:,:,].permute((1, 2, 3, 0))] 
+        # shape of h_stacks[-1] is batch, num_tokens, hiddem_dim, n_layers. len of it is number of runs
+        numbers += correct_vsas
+
+    numbers_stacked = torch.stack(numbers)
+    max_tok_length = max([h.shape[1] for h in h_stacks])
+    if tokens_to_keep == "all":
+        h_stacked = torch.stack([F.pad(h, (0, 0, 0, 0, max_tok_length - h.shape[1], 0, 0, 0))[0,:,:,:,] if max_tok_length != h.shape[1] 
+                                 else h[0,:,:,:,] for h in h_stacks])
+    else:
+        h_stacked = torch.stack(h_stacks)
+        h_stacked = h_stacked.view(-1, tokens_to_keep, generator.model.params.dim, generator.model.params.n_layers+1)
+
+        
+    # Load data for each layer to create data loaders
+    encoder_data_loaders = []
+
+    for n_layer in layer_numbers:
+        if verbose:
+            print("--- On Layer Number:", n_layer.item())
+
+        # Stack data for the current layer
+        if   tokens_to_keep == "all":
+            h_layer_stacked = h_stacked[:,                :, :, n_layer]
+        elif tokens_to_keep == 1:
+            h_layer_stacked = h_stacked[:,               -1, :, n_layer]
+        elif tokens_to_keep == 1:
+            h_layer_stacked = h_stacked[:, -tokens_to_keep:, :, n_layer]
+
+        # Create `EncoderDataset` and `DataLoader` for the current layer
+        encoder_training_data = EncoderDataset(h_layer_stacked.cuda(), numbers_stacked.cuda())
+        gpu_generator = torch.Generator(device='cuda')
+        if gpu_seed:
+            gpu_generator.manual_seed(42)
+
+        encoder_data_loader = DataLoader(
+            encoder_training_data,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            generator=gpu_generator,
+        )
+        encoder_data_loaders.append(encoder_data_loader)
+        
+    return encoder_data_loaders
+
 
 def count_trainable_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)

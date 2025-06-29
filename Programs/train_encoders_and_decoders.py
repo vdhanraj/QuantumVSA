@@ -71,7 +71,7 @@ parser.add_argument("--config", type=str, default="train_encoders_and_decoders_d
 # === Path config ===
 parser.add_argument("--curr_dir", type=str, default=config_defaults.get("curr_dir"), help="Path to program root")
 parser.add_argument("--git_dir", type=str, default=config_defaults.get("git_dir"), help="Path to project Git root")
-parser.add_argument("--chpt_dir", type=str, default=config_defaults.get("chpt_dir"), help="Path to LLM checkpoint directory")
+parser.add_argument("--ckpt_dir", type=str, default=config_defaults.get("ckpt_dir"), help="Path to LLM checkpoint directory")
 parser.add_argument("--tokenizer_path", type=str, default=config_defaults.get("tokenizer_path"), help="Path to tokenizer.model file")
 parser.add_argument("--generate_data", type=str2bool, default=config_defaults.get("generate_data"), help="Whether to generate training data")
 parser.add_argument("--log_wandb", type=str2bool, default=config_defaults.get("log_wandb"), help="Whether to log outputs to wandb")
@@ -101,7 +101,7 @@ parser.add_argument("--restrict_train_dataset", type=int, default=config_default
 parser.add_argument("--restrict_val_dataset", type=int, default=config_defaults.get("restrict_val_dataset"), help="Number of queries to load to validation encoders and decoders")
 parser.add_argument("--restrict_test_dataset", type=int, default=config_defaults.get("restrict_test_dataset"), help="Number of queries to load to test encoders and decoders")
 parser.add_argument("--save_frequency", type=int, default=config_defaults.get("save_frequency"), help="Save hidden/VSA data every N batches")
-parser.add_argument("--layer_numbers", type=int, nargs="+", default=config_defaults.get("layer_numbers"), help="Layers to train encoders/decoders for")
+parser.add_argument("--layer_numbers", nargs="+",  type=int, default=config_defaults.get("layer_numbers"), help="Layers to train encoders/decoders for")
 parser.add_argument("--complexity", type=int, default=config_defaults.get("complexity"), help="Problem complexity = digits + 1")
 parser.add_argument("--n_samples", type=int, default=config_defaults.get("n_samples"), help="Number of samples to use per forward pass")
 parser.add_argument("--problem_type", nargs="+", type=str, default=config_defaults.get("problem_type"), help="Subset of problem types to use for training")
@@ -132,7 +132,7 @@ args = parser.parse_args(remaining_argv)
 # --- Step 5: Expand and assign ---
 curr_dir       = str(Path(args.curr_dir).expanduser())
 git_dir        = str(Path(args.git_dir ).expanduser())
-ckpt_dir       = str(Path(args.chpt_dir).expanduser())
+ckpt_dir       = str(Path(args.ckpt_dir).expanduser())
 tokenizer_path = str(Path(args.tokenizer_path).expanduser())
 generate_data  = args.generate_data
 log_wandb      = args.log_wandb
