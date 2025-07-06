@@ -1,7 +1,7 @@
 # === Paths ===
 curr_dir: "~/Neurosymbolic-LLM/Programs"
 git_dir: "~/Neurosymbolic-LLM"
-chpt_dir: "~/.llama/checkpoints/Llama3.1-8B-Instruct"
+ckpt_dir: "~/.llama/checkpoints/Llama3.1-8B-Instruct"
 tokenizer_path: "~/.llama/checkpoints/Llama3.1-8B-Instruct/tokenizer.model"
 generate_data: 1
 log_wandb: 1
