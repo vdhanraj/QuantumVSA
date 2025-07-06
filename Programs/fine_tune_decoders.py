@@ -612,7 +612,7 @@ def inference_step(n_samples, generator, temperature=0, problem_type="addition",
             modified_list_of_logits = []
             modified_out_tokens     = []
             modified_list_of_probs  = []
-            for i in range(len(out_tokens)):
+            for i in range(len(out_tokens)): # Iterate over batch items in out_tokens
                 if token_for_final not in out_tokens[i]: # 19918 is the token for the word "Final":
                     if verbose == 1 and i == 0:
                         print("COT response does not contain the phrase 'Final Answer:' as required:\n", 
@@ -634,18 +634,19 @@ def inference_step(n_samples, generator, temperature=0, problem_type="addition",
                     if bold_token in out_tokens[i][(out_tokens[i].index(token_for_final) + 4):   ]:
                         fp = (out_tokens[i][(out_tokens[i].index(token_for_final) + 4):].index(bold_token) + 
                               out_tokens[i].index(token_for_final) + 4)
-                        modified_out_tokens     += [out_tokens    [  i  ][(out_tokens[i].index(token_for_final) + 4):fp   ]]
-                        modified_list_of_logits += [list_of_logits[:,i,:][(out_tokens[i].index(token_for_final) + 4):fp,:,]]
-                        modified_list_of_probs  += [list_of_probs [:,i,:][(out_tokens[i].index(token_for_final) + 4):fp,:,]]
+                        modified_out_tokens     += [out_tokens    [  i:i+1  ][(out_tokens[i].index(token_for_final) + 4):fp   ]]
+                        modified_list_of_logits += [list_of_logits[:,i:i+1,:][(out_tokens[i].index(token_for_final) + 4):fp,:,]]
+                        modified_list_of_probs  += [list_of_probs [:,i:i+1,:][(out_tokens[i].index(token_for_final) + 4):fp,:,]]
                     else:
-                        modified_out_tokens     += [out_tokens    [  i  ][(out_tokens[i].index(token_for_final) + 4):   ]]
-                        modified_list_of_logits += [list_of_logits[:,i,:][(out_tokens[i].index(token_for_final) + 4):,:,]]
-                        modified_list_of_probs  += [list_of_probs [:,i,:][(out_tokens[i].index(token_for_final) + 4):,:,]]
+                        modified_out_tokens     += [out_tokens    [  i:i+1  ][(out_tokens[i].index(token_for_final) + 4):   ]]
+                        modified_list_of_logits += [list_of_logits[:,i:i+1,:][(out_tokens[i].index(token_for_final) + 4):,:,]]
+                        modified_list_of_probs  += [list_of_probs [:,i:i+1,:][(out_tokens[i].index(token_for_final) + 4):,:,]]
 
             list_of_logits = torch.cat(modified_list_of_logits, axis=1)
             list_of_probs  = torch.cat(modified_list_of_probs,  axis=1)
             out_tokens     = modified_out_tokens
-
+            if verbose == 2:
+                print(list_of_logits.shape)
         elif generator.model.test_on_unrelated_questions:
             for i in range(len(out_tokens)):
                 output = generator.tokenizer.decode(out_tokens[i])
@@ -657,7 +658,7 @@ def inference_step(n_samples, generator, temperature=0, problem_type="addition",
 
                 response_data += ["Model Guesses:", output]
                 response_data += ["Correct Answer:", correct_responses[i]]
-                
+
             return 0, 0, response_data
 
 
@@ -690,7 +691,8 @@ def inference_step(n_samples, generator, temperature=0, problem_type="addition",
     max_len = max(t.size(0) for t in all_logits)
     padded_tensors = []
     for t in all_logits:
-        T, B, V = t.shape
+        #print("TSHAPE", t.shape)
+        T, B, V = t.shape # Shape is outputted tokens T, batch size B, and number of logits V, for each t in all_logits (which is of length inference_to_backprop_ratio)
         pad_amount = max_len - T
         t_padded = F.pad(t, (0, 0, 0, 0, 0, pad_amount), value=0)
         padded_tensors.append(t_padded)

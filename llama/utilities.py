@@ -608,7 +608,7 @@ def episode(generator, dialogs, temperature=0.0, top_p=0.9, inference_mode=None,
     h_stacks = []
     for cur_pos in range(min_prompt_len, total_len):
         logits, h_stack, h = inference_mode(tokens[:, prev_pos:cur_pos], prev_pos, curr_token=curr_token, curr_pt=curr_pt, curr_x=curr_x, curr_y=curr_y, verbose=verbose)
-        # Shape of logits are (batch_size, total_sequence_length, num_tokens)
+        # Shape of logits are (batch_size, total_input_sequence_length, num_possible_tokens)
         h_stacks += [h_stack]
         # probs are intentionally being calculated here, so that it contains an extra token (the stop token), to help with loss calculation
         probs = torch.softmax(logits[:, -1,:] / 1, dim=-1)
@@ -639,6 +639,7 @@ def episode(generator, dialogs, temperature=0.0, top_p=0.9, inference_mode=None,
 
         curr_token += 1
         
+    # Each item in list_of_logits and list_of_probs is of shape (batch_size, num_possible_tokens), and is of length number_of_outputted_tokens
     list_of_probs = torch.stack(list_of_probs)
     list_of_logits = torch.stack(list_of_logits)
 
@@ -656,8 +657,10 @@ def episode(generator, dialogs, temperature=0.0, top_p=0.9, inference_mode=None,
                 pass
         out_tokens.append(toks)
 
-    return h_stacks, list_of_probs, list_of_logits, out_tokens
+    # out_tokens is of length batch size
+    # Shape of list_of_logits and list_of_probs is (sequnumber_of_outputted_tokens, batch_size, num_possible_tokens)
 
+    return h_stacks, list_of_probs, list_of_logits, out_tokens
 
 def gather_h_stacks(generator, SE, dialog_data, temperature=0, produce_correct_VSA=False):
     dialogs = dialog_data[0]
