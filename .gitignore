@@ -10,3 +10,6 @@ outputs/
 models/
 *gathered_data*
 *.sh
+Programs/VSA_library/*
+*.pdf
+*Zone.Identifier*
